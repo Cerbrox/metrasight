@@ -28,8 +28,10 @@ htmlcov/
 .env.*
 !.env.example
 
-# Local storage (uploaded / processed images in dev)
-storage/
+# Local storage (uploaded / processed images in dev).
+# ANCHORED to the runtime upload dir — an unanchored `storage/` would also
+# ignore the app/services/storage source package (broke the Render build).
+services/api/storage/
 *.sqlite3
 *.db
 
