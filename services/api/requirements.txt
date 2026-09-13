@@ -37,5 +37,15 @@ python-docx>=1.1,<2
 paddlepaddle==3.0.0
 paddleocr==3.1.0
 paddlex==3.1.0
+# paddleocr pulls paddlex[ie,...], which requires langchain>=0.2 with no
+# upper bound. langchain 1.x removed the deprecated `langchain.docstore`
+# module that paddlex 3.1.0 imports (via its retriever component), which
+# breaks `from paddleocr import PaddleOCR` entirely — every OCR run fails
+# with AI_SERVICE_UNAVAILABLE ("No module named 'langchain.docstore'",
+# observed on a fresh 2026 Docker build). Pin to the 0.3.x line verified
+# working with the paddle stack above (shim still present in 0.3.30).
+langchain==0.3.30
+langchain-community==0.3.31
+langchain-core==0.3.86
 opencv-contrib-python>=4.8,<5
 numpy>=1.26,<3
