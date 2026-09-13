@@ -36,6 +36,23 @@ COPY services/api/requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY services/api/app ./app
+COPY services/api/scripts/bake_ocr_models.py ./scripts/bake_ocr_models.py
+
+# Bake the PaddleOCR PP-OCRv5 mobile (det+rec) models into the image so the
+# runtime NEVER downloads them. Render Free's ephemeral filesystem previously
+# forced a ~22 MB re-download on every cold start; with the default
+# PADDLE_PDX_MODEL_SOURCE ("huggingface", falling back to the BOS CDN at
+# ~3 KB/s from Render's US instances) that alone stalled the demo seed in
+# OCR_PROCESSING for 90+ minutes. PaddleX 3.1.0 skips the download when
+# $PADDLE_PDX_CACHE_HOME/official_models/<model> already exists, so with the
+# cache baked here and MODEL_SOURCE=BOS at RUNTIME (set in render.yaml, which
+# overrides image ENV) the model load is a pure local existence check — zero
+# network. The BUILD itself keeps the default source: HuggingFace is fast
+# from Render's US build machines (BOS is the slow one), and either source
+# produces the identical official_models/<name> layout.
+# (render.yaml points the runtime env at the same cache path.)
+ENV PADDLE_PDX_CACHE_HOME=/opt/paddlex-cache
+RUN python scripts/bake_ocr_models.py
 
 # Built web client from stage 1; the API serves it when STATIC_DIST_DIR is set.
 COPY --from=web-build /build/apps/web/dist /srv/web

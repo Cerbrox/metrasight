@@ -35,15 +35,26 @@ services:
       - key: DEFER_HEAVY_STARTUP
         value: "true"
 
-      # --- Ephemeral filesystem (NO persistent disk on Free) ------------------
-      # Everything under /tmp/metrasight is re-created on each cold start:
-      # fresh DB → full seed; models re-downloaded (~20 MB) before first OCR.
+      # --- Filesystem (Free tier: NO persistent disk) ------------------------
+      # SQLite + uploaded evidence live on the EPHEMERAL container filesystem
+      # under /tmp/metrasight — re-created (and DEMO-FOOD re-seeded through
+      # REAL OCR) on every cold start. The PaddleOCR model cache is the
+      # exception: it is BAKED into the Docker image at /opt/paddlex-cache
+      # (see Dockerfile), so cold starts never re-download ~22 MB of models —
+      # with PADDLE_PDX_MODEL_SOURCE=BOS, PaddleX 3.1.0 resolves models by
+      # local existence check only (verified in paddlex/utils/download.py:
+      # download_and_extract skips when the model dir exists). Without this,
+      # the default "huggingface" source fell back to the BOS CDN at ~3 KB/s
+      # from Render's US instances and stalled the seed in OCR_PROCESSING for
+      # 90+ minutes.
       - key: DATABASE_URL
         value: sqlite:////tmp/metrasight/legalmet.db
       - key: STORAGE_DIR
         value: /tmp/metrasight/storage
       - key: PADDLE_PDX_CACHE_HOME
-        value: /tmp/metrasight/.paddlex
+        value: /opt/paddlex-cache
+      - key: PADDLE_PDX_MODEL_SOURCE
+        value: BOS
 
       # --- Security ----------------------------------------------------------
       # Generated once per service by Render; never committed.

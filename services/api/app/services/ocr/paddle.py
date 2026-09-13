@@ -45,6 +45,23 @@ from app.services.interfaces import BBox, OcrLine, OcrResult, OCRService, Servic
 
 logger = get_logger(__name__)
 
+
+def _rss_mb() -> float | None:
+    """Current process RSS in MB, or ``None`` where unreadable (Windows dev).
+
+    Reads ``/proc/self/status`` directly — no extra dependency. Used only for
+    deployment diagnostics (Free-tier OOM forensics); a missing value is
+    logged as such, never guessed.
+    """
+    try:
+        with open("/proc/self/status", encoding="ascii") as f:
+            for line in f:
+                if line.startswith("VmRSS:"):
+                    return round(int(line.split()[1]) / 1024.0, 1)
+    except OSError:
+        pass
+    return None
+
 # Model files used per language (recorded in run configuration / ModelVersion
 # meta for auditability).
 _MODEL_FAMILY = "PP-OCRv5"
@@ -186,8 +203,24 @@ class PaddleOCRService(OCRService):
             engine = self._engine_for(lang)
             try:
                 with self._predict_lock:
+                    import time
+
+                    predict_started = time.monotonic()
+                    logger.info(
+                        "paddle_ocr_predict_started",
+                        language=lang,
+                        width=width,
+                        height=height,
+                        rss_mb=_rss_mb(),
+                    )
                     future = self._executor.submit(self._predict, engine, array)
                     raw_results = future.result(timeout=self._timeout_seconds)
+                    logger.info(
+                        "paddle_ocr_predict_completed",
+                        language=lang,
+                        elapsed_seconds=round(time.monotonic() - predict_started, 1),
+                        rss_mb=_rss_mb(),
+                    )
             except FutureTimeoutError as exc:
                 raise ServiceUnavailableError(
                     "OCR timed out before the engine finished.",
@@ -216,6 +249,14 @@ class PaddleOCRService(OCRService):
             engine = self._engines.get(lang)
             if engine is not None:
                 return engine
+            import time
+
+            build_started = time.monotonic()
+            logger.info(
+                "paddle_ocr_engine_build_started",
+                language=lang,
+                rss_mb=_rss_mb(),
+            )
             try:
                 from paddleocr import PaddleOCR
             except Exception as exc:  # pragma: no cover - depends on local install
@@ -250,7 +291,12 @@ class PaddleOCRService(OCRService):
                     details={"language": lang, "reason": f"{type(exc).__name__}: {exc}"},
                 ) from exc
             self._engines[lang] = engine
-            logger.info("paddle_ocr_engine_ready", language=lang)
+            logger.info(
+                "paddle_ocr_engine_ready",
+                language=lang,
+                elapsed_seconds=round(time.monotonic() - build_started, 1),
+                rss_mb=_rss_mb(),
+            )
             return engine
 
     @staticmethod
