@@ -219,10 +219,26 @@ class PaddleOCRService(OCRService):
             try:
                 from paddleocr import PaddleOCR
             except Exception as exc:  # pragma: no cover - depends on local install
+                # The underlying exception (ImportError, MemoryError on
+                # RAM-capped hosts, missing native lib, …) is the ONLY way to
+                # tell "not installed" from "installed but broken" — surface
+                # it in the log and the error, never just the generic message.
+                logger.error(
+                    "paddleocr_import_failed",
+                    language=lang,
+                    error_type=type(exc).__name__,
+                    error=str(exc)[:500],
+                )
                 raise ServiceUnavailableError(
-                    "Perception model unavailable. PaddleOCR is not installed — "
-                    "complete the documented local model setup (see docs/ocr.md).",
-                    details={"language": lang, "reason": type(exc).__name__},
+                    "Perception model unavailable. The PaddleOCR engine could not "
+                    f"be imported ({type(exc).__name__}: {str(exc)[:300]}). If it "
+                    "is not installed, complete the documented local model setup "
+                    "(see docs/ocr.md).",
+                    details={
+                        "language": lang,
+                        "reason": type(exc).__name__,
+                        "importError": str(exc)[:500],
+                    },
                 ) from exc
             try:
                 engine = PaddleOCR(lang=lang, **self._engine_flags)
