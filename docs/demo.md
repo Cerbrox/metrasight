@@ -1,0 +1,202 @@
+# Demo guide
+
+How to run METRASIGHT locally and demonstrate the full inspection lifecycle —
+**entirely offline** after a one-time model download.
+
+> ⚠️ **DEMO REGULATORY DATA — NOT LEGAL ADVICE.** The regulatory requirements
+> in this build are research-grade and UNVERIFIED. Every demo inspection below
+> is seeded through the real pipeline, but its findings are system-generated
+> decision-support output against that unverified dataset — never a legal
+> determination.
+
+---
+
+## 1. Prerequisites (one time)
+
+```bash
+# repo root
+npm install                                   # frontend + shared packages
+
+cd services/api
+python -m venv .venv
+source .venv/Scripts/activate                 # Windows bash; .venv/bin/activate elsewhere
+pip install -r requirements.txt -r requirements-dev.txt
+pip install "paddlepaddle==3.0.0" "paddleocr==3.1.0" "paddlex==3.1.0"
+```
+
+The **first** perception run (or first boot with demo seeding) downloads the
+PP-OCRv5 detection + recognition models (~tens of MB each) into
+`~/.paddlex/official_models`. After that one download, **no network access is
+needed for anything**: OCR runs locally on CPU, the database is local SQLite,
+the regulatory dataset is seeded locally, and the frontend talks only to
+localhost. There is no external AI API key anywhere in the demo path.
+
+## 2. Start the backend
+
+```bash
+cd services/api
+source .venv/Scripts/activate
+alembic upgrade head        # optional — startup also creates tables
+uvicorn app.main:app --reload   # http://localhost:8000
+```
+
+On boot with a fresh database the backend seeds, in order: demo users,
+research-grade regulatory data, deterministic compliance rules, and **three
+full-lifecycle demo inspections** (below). The first boot pays the real-OCR
+cost for those three inspections (~1–2 minutes on CPU — the log line
+`demo_inspections_seeded` reports each one's real outcome). Later boots skip
+them (idempotent). To boot without demo inspections:
+`SEED_DEMO_INSPECTIONS=false`.
+
+## 3. Start the frontend
+
+```bash
+# repo root
+npm run dev:web             # http://localhost:5173 (proxies /api → :8000)
+```
+
+Log in as `inspector@legalmet.local` / `changeme-inspector`
+(or `admin@legalmet.local` / `changeme-admin`; `auditor@legalmet.local` is
+read-only — good for demonstrating role enforcement).
+
+## 4. The seeded demo inspections (DEMO-FOOD by default)
+
+By default the system seeds **one** intentional demo inspection, `DEMO-FOOD`.
+The full set (`DEMO-WATER`, `DEMO-OIL`, `DEMO-QUINOA`) is available by setting
+`SEED_DEMO_INSPECTION_REFS=DEMO-FOOD,DEMO-WATER,DEMO-OIL,DEMO-QUINOA` before
+the first boot (or before `npm run reset:demo`). To restore a clean demo
+state at any time:
+
+```bash
+npm run reset:demo     # wipes ALL transactional activity (inspections,
+                       # evidence, findings, complaints, audit, stored files),
+                       # keeps users + regulatory data + rules, then re-seeds
+                       # the demo inspection(s) through the real pipeline.
+                       # Idempotent — run it as often as you like.
+```
+
+Each seeded inspection was produced **through the real services at seed
+time** — nothing about it is hand-written into the database:
+
+| Stage | What happened | Where to show it |
+| --- | --- | --- |
+| Intake | the committed synthetic label PNG (`app/db/demo_images/`) uploaded through the real intake service, graded `ACCEPTABLE` by the real quality analyzer | Inspection Workspace → image viewer |
+| Perception | a real local PaddleOCR run over the label (run status `REVIEW_REQUIRED` where fields fell below the review-confidence threshold — that is the honest outcome, not an error) | Perception panel → per-field evidence drawers (raw OCR text, bounding boxes, confidence) |
+| Evaluation | the deterministic engine evaluated the perceived fields against the seeded requirements — 9 findings per inspection | Findings list with expected-vs-detected values and the seven-question explanation |
+| Review | an inspector (the seeded demo user) CONFIRMED every finding through the real HITL service | Finding review history; evidence graph nodes tagged HUMAN vs AI |
+| Decision | a final human decision — `NON_COMPLIANT` for FOOD/WATER/OIL (each label has real gaps by design), `COMPLIANT` for QUINOA | Decision panel + audit trail |
+| Audit | ~27 audit events per inspection, written by the services themselves | Audit timeline; evidence graph |
+
+The evidence-graph view is the demo's centerpiece: every finding traces back
+through the requirement → version → document → source chain, and every node is
+tagged with its origin (AI / HUMAN / SYSTEM).
+
+The demos deliberately cover different outcomes (seed the ones you want with
+`SEED_DEMO_INSPECTION_REFS`):
+
+| Inspection | Story | Final decision |
+| --- | --- | --- |
+| `DEMO-FOOD` | clear issues — consumer-care contact has an e-mail but no telephone | NON_COMPLIANT |
+| `DEMO-WATER` | clear issues — MRP declared without the required "inclusive of all taxes" wording | NON_COMPLIANT |
+| `DEMO-OIL` | several mandatory declarations simply absent — honest `NOT_DETECTED` findings, never guessed violations | NON_COMPLIANT |
+| `DEMO-QUINOA` | mostly valid — every checkable declaration present, including the imported-package chain ("Imported by" + "Country of Origin"), so the Rule 6(1)(aa) imported-only applicability condition resolves deterministically | COMPLIANT |
+
+Every inspection also carries at least one `REVIEW_REQUIRED` finding (the
+import-status question) whose seeded CONFIRM review shows the human-in-the-loop
+history — perception never silently decides applicability.
+
+## 5. Live demo flow (do this on stage)
+
+1. **Login** as inspector; the Dashboard shows the seeded demo inspection(s).
+2. Open **DEMO-FOOD** → walk the evidence chain for one NON_COMPLIANT finding:
+   finding → extracted field (raw OCR text + confidence) → requirement in
+   force (version + source).
+3. **Upload a new label** (any packaged-commodity photo): create an inspection,
+   upload the image — the real quality gate grades it (blur/glare/low-light
+   rejections are honest and worth showing).
+4. **Run perception** — real OCR, roughly 15–25 s per image on CPU; the panel
+   polls while active. Show the field-level confidence and "review required"
+   flags.
+5. **Evaluate** — deterministic findings appear; open one and read the
+   explanation.
+6. **Correct a field** as the inspector would (the AI original is preserved and
+   the correction is tagged HUMAN), then re-evaluate.
+7. **Record a decision** — the gate blocks COMPLIANT while unresolved critical
+   findings exist; demonstrate that with REQUIRES_FURTHER_REVIEW.
+8. Log in as **auditor** in a second tab — every write button is gone (403 at
+   the API level, not just hidden in the UI).
+
+## 6. Demo failure plan (if something breaks on stage)
+
+- **OCR engine fails to load / models missing** → perception runs fail with
+  `AI_SERVICE_UNAVAILABLE` and the UI shows an honest error state. Fall back to
+  the seeded demo inspection(s) — they already contain complete perception
+  evidence, findings, reviews and decisions, and need no engine at runtime.
+- **Fresh-database boot is slow** (first boot runs real OCR) → pre-boot once
+  before the demo; subsequent boots are ~2 s and skip seeding. Worst case,
+  boot with `SEED_DEMO_INSPECTIONS=false` and show the seeded demos from the
+  pre-warmed database. If the demo data itself is in a bad state,
+  `npm run reset:demo` restores the clean intentional dataset in ~40 s.
+- **Upload rejected by the quality gate** → that is the system working
+  correctly; narrate it (blur/glare/too-small detection), then upload a clean
+  photo.
+- **Wrong login** → demo credentials are in `README.md` § Backend startup.
+
+## 7. What NOT to claim in the demo
+
+- Do not present findings as legal determinations — the inspector decides.
+- Do not quote accuracy percentages — no verified benchmark exists for this
+  build; confidence numbers are OCR recognition scores, not legal confidence.
+- Language support is English only (as configured and actually tested); Hindi
+  and Kannada models exist in PaddleOCR but are **not** enabled or claimed.
+
+---
+
+## 8. UI-09 demo flow — search, history & operational intelligence
+
+Extends §5 with the intelligence layer (see
+`docs/ui-09-search-history-intelligence.md` for the architecture). Every
+number shown is a live database count — nothing is mocked.
+
+1. Stay logged in as **inspector** (or admin). The **global search** box in
+   the top bar is the entry point: type `DEMO` and pause — grouped results
+   appear (Inspections / Complaints / Products / Reports / Findings /
+   Evidence), each linking to its existing detail page.
+2. Search by ID: type a reference like `LM-…` or a product name, a rule code
+   (`LM-PC-2011-6.1(a)`), or an OCR-extracted value — all are searchable,
+   case-insensitive, server-side.
+3. Press **Enter** to land on **Inspection History** (`/history`) with the
+   query applied — note the URL carries the filter
+   (`/history?q=demo`), so it can be bookmarked and shared.
+4. On `/history`: read the KPI cards (Total / Compliant / Non-Compliant /
+   Review Required / Open — all real counts), then apply **Source = Citizen
+   Complaint** + **Result = Non-Compliant** and click **Apply** — the URL
+   changes and the table refilters server-side. Clear with **Clear**.
+5. Click **Timeline** on a row: the drawer shows the recorded chain
+   (created → package captured → OCR processed → findings generated →
+   decision → report) — **only events that actually exist**; missing stages
+   are simply absent, never fabricated.
+6. From a complaint-led row, note the **Establishment** column (the shop from
+   the citizen complaint) and the **Evidence** count (captured images).
+7. Open an inspection from the history table → findings → **Evidence Graph**
+   (§5 step 2) → the **Report** — the whole existing chain still works.
+8. Go to **Product Repository** (`/products`): search `DEMO`, open
+   **DEMO Water** (or any product) → overview, declared-field history,
+   inspection history, repeated findings ("A historical pattern — not a
+   verdict") and the package-image gallery. Read the boundary note: a
+   historical record does not prove current compliance.
+9. Go to **Operational Intelligence** (`/analytics`): KPIs (rates show
+   **N/A** when there is insufficient data, never 0%), the inspection trend
+   (switch day/week/month), outcome distribution, and the
+   **complaint → inspection pipeline** with real stage counts and the real
+   conversion rate.
+10. Still on `/analytics`: evidence completeness (from the Evidence Planner),
+    finding categories (real rule codes), repeated findings (neutral
+    wording), location intelligence (real complaint locations; an honest
+    "not enough data yet" state when locations are sparse), and the
+    [View Reports] / [View Audit Trail] cross-links.
+11. **Role enforcement**: in a private window with no login, hit
+    `http://localhost:8000/api/v1/analytics/operational` → **401**. Citizens
+    use only the anonymous complaint surface and can never reach
+    history/products/analytics — the backend rejects them, no UI hiding
+    involved.

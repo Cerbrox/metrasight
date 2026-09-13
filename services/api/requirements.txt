@@ -1,0 +1,41 @@
+# ---------------------------------------------------------------------------
+# METRASIGHT — API service runtime dependencies
+# Target: Python 3.11+
+# ---------------------------------------------------------------------------
+fastapi>=0.115,<0.117
+uvicorn[standard]>=0.30
+pydantic>=2.7,<3
+pydantic-settings>=2.3
+SQLAlchemy>=2.0.30,<2.1
+alembic>=1.13
+
+# PostgreSQL driver (production). Not required for the SQLite dev/test path.
+psycopg2-binary>=2.9
+
+# Auth & security
+PyJWT>=2.8
+bcrypt>=4.1
+
+# Uploads & structured logging
+python-multipart>=0.0.9
+structlog>=24.1
+
+# Image intake (Prompt 3): deterministic decoding, EXIF orientation, quality
+# statistics and safe resizing. No numpy/opencv — Pillow only.
+Pillow>=10,<12
+
+# UI-08 — official report exports: structured PDF via reportlab and editable
+# DOCX via python-docx (both rendered server-side from real inspection data).
+reportlab>=4,<5
+python-docx>=1.1,<2
+
+# Real perception (Prompt 4): local CPU OCR via PaddleOCR.
+# Version pins matter: paddleocr 3.1.0 requires paddlex==3.1.x (3.7+ changes
+# PaddlePredictorOption.__init__ and breaks engine construction). paddlepaddle
+# is the CPU inference runtime; opencv-contrib-python and numpy are used both
+# by paddleocr and directly (QR/barcode vision service, image decode).
+paddlepaddle==3.0.0
+paddleocr==3.1.0
+paddlex==3.1.0
+opencv-contrib-python>=4.8,<5
+numpy>=1.26,<3

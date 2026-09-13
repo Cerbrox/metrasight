@@ -1,0 +1,64 @@
+# ---------------------------------------------------------------------------
+# Render Blueprint — METRASIGHT single-service deployment.
+# Docs: docs/deployment.md · https://render.com/docs/blueprint-spec
+#
+# One Docker web service serves the built React SPA + FastAPI API on a single
+# origin (same-origin requests → no CORS needed). SQLite DB, uploaded evidence
+# storage and the PaddleOCR model cache live on the persistent disk.
+#
+# NOTE on the plan: PaddleOCR CPU inference needs real RAM. The free tier and
+# Starter (512 MB) are expected to OOM during OCR — use Standard (2 GB).
+# ---------------------------------------------------------------------------
+services:
+  - type: web
+    name: metrasight
+    runtime: docker
+    plan: standard
+    dockerfilePath: ./Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/v1/health
+    autoDeploy: true # redeploy on every push to the default branch
+    disk:
+      name: metrasight-data
+      mountPath: /var/data
+      sizeGB: 5
+    envVars:
+      # --- Runtime shape ---------------------------------------------------
+      - key: ENVIRONMENT
+        value: production
+      - key: LOG_JSON
+        value: "true"
+      # Bind the port fast; the OCR-dependent DEMO-FOOD seed + OCR prewarm
+      # finish in a background thread (idempotent, ~2–4 min on first boot
+      # with a fresh disk; skipped once seeded).
+      - key: DEFER_HEAVY_STARTUP
+        value: "true"
+
+      # --- Persistent data (disk at /var/data) ------------------------------
+      - key: DATABASE_URL
+        value: sqlite:////var/data/legalmet.db
+      - key: STORAGE_DIR
+        value: /var/data/storage
+      # PaddleOCR downloads PP-OCRv5 models here on first use — persisted so
+      # redeploys never re-download.
+      - key: PADDLE_PDX_CACHE_HOME
+        value: /var/data/.paddlex
+
+      # --- Security ----------------------------------------------------------
+      # Generated once per service by Render; never committed.
+      - key: SECRET_KEY
+        generateValue: true
+
+      # --- Demo data (SIH prototype — clearly-labelled demo credentials) -----
+      - key: SEED_DEMO_DATA
+        value: "true"
+      - key: SEED_REGULATORY_DATA
+        value: "true"
+      - key: SEED_COMPLIANCE_RULES
+        value: "true"
+      - key: SEED_DEMO_INSPECTIONS
+        value: "true"
+      - key: DEMO_INSPECTION_REFS
+        value: DEMO-FOOD
+      - key: PERCEPTION_OCR_BACKEND
+        value: paddle

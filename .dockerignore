@@ -1,0 +1,14 @@
+# Keep the build context small and free of machine-local state.
+.git
+.claude
+**/node_modules
+**/.venv
+**/__pycache__
+**/.pytest_cache
+**/.ruff_cache
+**/dist
+**/*.db
+**/*.sqlite3
+services/api/storage
+services/api/.env
+*.log
