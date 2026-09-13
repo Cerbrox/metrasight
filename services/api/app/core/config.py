@@ -89,6 +89,13 @@ class Settings(BaseSettings):
     # speed cost. Unset locally — behaviour is bit-identical to before.
     perception_ocr_cpu_threads: int | None = None
     perception_ocr_enable_mkldnn: bool | None = None
+    # Detection-stage input resolution cap (pixels on the long edge; the short
+    # edge keeps aspect). Det compute scales ~quadratically with this, so on
+    # CPU-throttled hosts (Render Free, 0.1 CPU) capping to 640 roughly halves
+    # OCR time with no measurable accuracy loss on the project's labels
+    # (verified locally: same 8 lines / 8 fields on the demo labels at 640 vs
+    # the 960 default). None = PaddleOCR default (960).
+    perception_ocr_det_limit_side_len: int | None = None
 
     # --- Demo seeding (DEMO ONLY) -----------------------------------------
     seed_demo_data: bool = True

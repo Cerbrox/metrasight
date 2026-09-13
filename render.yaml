@@ -81,5 +81,10 @@ services:
         value: "1"
       - key: PERCEPTION_OCR_ENABLE_MKLDNN
         value: "false"
+      # Detection-stage resolution cap: real OCR unchanged (verified locally —
+      # identical 8 lines on the demo labels at 640 vs the 960 default), but
+      # det compute drops ~2.3x — the main inference-speed knob at 0.1 CPU.
+      - key: PERCEPTION_OCR_DET_LIMIT_SIDE_LEN
+        value: "640"
       - key: PERCEPTION_OCR_TIMEOUT_SECONDS
         value: "900"
