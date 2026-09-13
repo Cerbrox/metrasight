@@ -35,6 +35,7 @@ Language support status (paddleocr 3.1.0 / PP-OCRv5, verified locally):
 from __future__ import annotations
 
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FutureTimeoutError
 
@@ -87,6 +88,7 @@ class PaddleOCRService(OCRService):
         cpu_threads: int | None = None,
         enable_mkldnn: bool | None = None,
         det_limit_side_len: int | None = None,
+        rec_batch_size: int | None = None,
     ) -> None:
         self._langs = [lang.strip() for lang in (langs or ["en"]) if lang.strip()]
         unsupported = [lang for lang in self._langs if lang not in SUPPORTED_LANGS]
@@ -146,6 +148,16 @@ class PaddleOCRService(OCRService):
             # speed knob on CPU-throttled hosts.
             self._engine_flags["text_det_limit_side_len"] = det_limit_side_len
             self._engine_flags["text_det_limit_type"] = "max"
+        if rec_batch_size is not None:
+            if rec_batch_size < 1:
+                raise ValidationError(
+                    "rec_batch_size must be >= 1.",
+                    details={"recBatchSize": rec_batch_size},
+                )
+            # Recognition batch: each batch buffers N resized text crops;
+            # 1 minimizes peak inference memory on RAM-capped hosts (Render
+            # Free 512 MB) at negligible speed cost for single-line batches.
+            self._engine_flags["text_recognition_batch_size"] = rec_batch_size
         # Single worker keeps inference serialized (paddle inference is not
         # thread-safe) while still giving us a hard timeout handle.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")
@@ -210,14 +222,13 @@ class PaddleOCRService(OCRService):
                 details={"storageKey": storage_key},
             )
         height, width = array.shape[:2]
+        extraction_started = time.monotonic()
 
         lines: list[OcrLine] = []
         for lang in self._langs:
             engine = self._engine_for(lang)
             try:
                 with self._predict_lock:
-                    import time
-
                     predict_started = time.monotonic()
                     logger.info(
                         "paddle_ocr_predict_started",
@@ -235,14 +246,35 @@ class PaddleOCRService(OCRService):
                         rss_mb=_rss_mb(),
                     )
             except FutureTimeoutError as exc:
+                # Honest hard budget (PERCEPTION_OCR_TIMEOUT_SECONDS): the
+                # real engine did not finish in time. Never answered with
+                # partial/fabricated text; the run fails with a structured,
+                # user-meaningful error.
                 raise ServiceUnavailableError(
-                    "OCR timed out before the engine finished.",
-                    code=None,
-                    details={"timeoutSeconds": self._timeout_seconds, "language": lang},
+                    "Text extraction timed out. Please retry with a clearer "
+                    "or smaller package image.",
+                    code=ErrorCode.OCR_TIMEOUT,
+                    details={
+                        "timeoutSeconds": self._timeout_seconds,
+                        "language": lang,
+                        "width": width,
+                        "height": height,
+                    },
                 ) from exc
             lines.extend(self._to_lines(raw_results, width, height, lang))
 
         mean = round(sum(line.confidence for line in lines) / len(lines), 4) if lines else 0.0
+        logger.info(
+            "ocr_text_extraction_completed",
+            elapsed_seconds=round(time.monotonic() - extraction_started, 1),
+            lines=len(lines),
+            languages=",".join(self._langs),
+            width=width,
+            height=height,
+            mean_confidence=mean,
+            backend=f"paddleocr/{self.descriptor.version}",
+            rss_mb=_rss_mb(),
+        )
         return OcrResult(
             lines=lines,
             mean_confidence=mean,
@@ -262,7 +294,6 @@ class PaddleOCRService(OCRService):
             engine = self._engines.get(lang)
             if engine is not None:
                 return engine
-            import time
 
             build_started = time.monotonic()
             logger.info(

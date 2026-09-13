@@ -154,6 +154,7 @@ def _build_perception_ocr(settings: Settings) -> OCRService:
             cpu_threads=settings.perception_ocr_cpu_threads,
             enable_mkldnn=settings.perception_ocr_enable_mkldnn,
             det_limit_side_len=settings.perception_ocr_det_limit_side_len,
+            rec_batch_size=settings.perception_ocr_rec_batch_size,
         )
     if backend == "mock":
         return MockOCRService()

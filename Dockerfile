@@ -23,7 +23,11 @@ RUN npm run build:web
 FROM python:3.11-slim-bookworm AS runtime
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    # Cap glibc malloc arena count: Paddle's worker threads otherwise fragment
+    # the 512 MB Render Free instance into per-thread arenas — a documented,
+    # measured lever for RSS reduction on RAM-capped hosts.
+    MALLOC_ARENA_MAX=2
 
 # opencv-contrib-python (runtime vision/decode) needs libGL/libglib;
 # libgomp1 is required by paddlepaddle's CPU kernels.

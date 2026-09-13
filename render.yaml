@@ -86,5 +86,12 @@ services:
       # det compute drops ~2.3x — the main inference-speed knob at 0.1 CPU.
       - key: PERCEPTION_OCR_DET_LIMIT_SIDE_LEN
         value: "640"
+      # Recognition batches of 1: lower peak inference memory (512 MB host)
+      # at negligible speed cost for label workloads.
+      - key: PERCEPTION_OCR_REC_BATCH_SIZE
+        value: "1"
+      # HARD OCR budget (seconds): real inference must finish within this or
+      # the run fails honestly with a structured OCR_TIMEOUT error — never
+      # partial or fabricated text. Requirement: <= 60 s text reading.
       - key: PERCEPTION_OCR_TIMEOUT_SECONDS
-        value: "900"
+        value: "60"

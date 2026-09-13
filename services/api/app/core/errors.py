@@ -32,6 +32,9 @@ class ErrorCode(str, Enum):
 
     # AI / perception services
     OCR_UNAVAILABLE = "OCR_UNAVAILABLE"
+    # Real OCR inference exceeded its hard time budget (PERCEPTION_OCR_TIMEOUT_
+    # SECONDS). Never retried silently and never answered with fake text.
+    OCR_TIMEOUT = "OCR_TIMEOUT"
     VISION_UNAVAILABLE = "VISION_UNAVAILABLE"
     AI_SERVICE_UNAVAILABLE = "AI_SERVICE_UNAVAILABLE"
     # A requested language is not supported by the installed/tested OCR

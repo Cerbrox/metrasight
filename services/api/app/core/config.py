@@ -96,6 +96,10 @@ class Settings(BaseSettings):
     # (verified locally: same 8 lines / 8 fields on the demo labels at 640 vs
     # the 960 default). None = PaddleOCR default (960).
     perception_ocr_det_limit_side_len: int | None = None
+    # Recognition batch size (crops per rec batch). 1 minimizes peak inference
+    # memory on RAM-capped hosts (Render Free 512 MB) with negligible speed
+    # cost for typical label workloads. None = PaddleOCR default.
+    perception_ocr_rec_batch_size: int | None = None
 
     # --- Demo seeding (DEMO ONLY) -----------------------------------------
     seed_demo_data: bool = True
