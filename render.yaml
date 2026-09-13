@@ -1,48 +1,49 @@
 # ---------------------------------------------------------------------------
-# Render Blueprint — METRASIGHT single-service deployment.
-# Docs: docs/deployment.md · https://render.com/docs/blueprint-spec
+# Render Blueprint — METRASIGHT FREE-tier deployment (prototype/demo only).
+# Docs: docs/deployment.md (§ Render Free) · https://render.com/docs/free
 #
 # One Docker web service serves the built React SPA + FastAPI API on a single
-# origin (same-origin requests → no CORS needed). SQLite DB, uploaded evidence
-# storage and the PaddleOCR model cache live on the persistent disk.
+# origin (same-origin requests → no CORS needed). Render Free provides NO
+# persistent disk, so SQLite, uploaded evidence and the PaddleOCR model cache
+# live on the EPHEMERAL container filesystem under /tmp/metrasight — they are
+# re-created (and DEMO-FOOD re-seeded through REAL OCR) on every cold start /
+# redeploy. This is intentional for a $0 public prototype; see docs for the
+# paid persistent-disk variant and its caveats.
 #
-# NOTE on the plan: PaddleOCR CPU inference needs real RAM. The free tier and
-# Starter (512 MB) are expected to OOM during OCR — use Standard (2 GB).
+# Render Free limits: 512 MB RAM / 0.1 CPU, spins down after ~15 min of
+# inactivity, ~50s+ cold starts. The OCR memory knobs below (cpu_threads=1,
+# mkldnn off) keep peak inference memory as low as the real engine allows.
 # ---------------------------------------------------------------------------
 services:
   - type: web
     name: metrasight
     runtime: docker
-    plan: standard
+    plan: free
     dockerfilePath: ./Dockerfile
     dockerContext: .
     healthCheckPath: /api/v1/health
     autoDeploy: true # redeploy on every push to the default branch
-    disk:
-      name: metrasight-data
-      mountPath: /var/data
-      sizeGB: 5
     envVars:
       # --- Runtime shape ---------------------------------------------------
       - key: ENVIRONMENT
         value: production
       - key: LOG_JSON
         value: "true"
-      # Bind the port fast; the OCR-dependent DEMO-FOOD seed + OCR prewarm
-      # finish in a background thread (idempotent, ~2–4 min on first boot
-      # with a fresh disk; skipped once seeded).
+      # Bind the port fast; the OCR-dependent DEMO-FOOD seed + prewarm finish
+      # in a background thread (idempotent). On Free's 0.1 CPU that seed takes
+      # several minutes after each cold start — the API is live meanwhile.
       - key: DEFER_HEAVY_STARTUP
         value: "true"
 
-      # --- Persistent data (disk at /var/data) ------------------------------
+      # --- Ephemeral filesystem (NO persistent disk on Free) ------------------
+      # Everything under /tmp/metrasight is re-created on each cold start:
+      # fresh DB → full seed; models re-downloaded (~20 MB) before first OCR.
       - key: DATABASE_URL
-        value: sqlite:////var/data/legalmet.db
+        value: sqlite:////tmp/metrasight/legalmet.db
       - key: STORAGE_DIR
-        value: /var/data/storage
-      # PaddleOCR downloads PP-OCRv5 models here on first use — persisted so
-      # redeploys never re-download.
+        value: /tmp/metrasight/storage
       - key: PADDLE_PDX_CACHE_HOME
-        value: /var/data/.paddlex
+        value: /tmp/metrasight/.paddlex
 
       # --- Security ----------------------------------------------------------
       # Generated once per service by Render; never committed.
@@ -62,3 +63,12 @@ services:
         value: DEMO-FOOD
       - key: PERCEPTION_OCR_BACKEND
         value: paddle
+
+      # --- Real-OCR memory tuning for the 512 MB Free instance ----------------
+      # PaddleOCR stays REAL (never mocked); these only cap its footprint.
+      - key: PERCEPTION_OCR_CPU_THREADS
+        value: "1"
+      - key: PERCEPTION_OCR_ENABLE_MKLDNN
+        value: "false"
+      - key: PERCEPTION_OCR_TIMEOUT_SECONDS
+        value: "900"

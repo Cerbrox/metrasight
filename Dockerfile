@@ -5,9 +5,9 @@
 # Stage 2 runs the FastAPI backend, which serves both the API (under /api/v1)
 # and the built SPA (STATIC_DIST_DIR) from one origin on 0.0.0.0:$PORT.
 #
-# SQLite DB, uploaded storage and the PaddleOCR model cache live on a mounted
-# persistent disk (/var/data on Render) — configured via environment
-# variables, never baked into the image.
+# SQLite DB, uploaded storage and the PaddleOCR model cache live wherever the
+# environment points them — /tmp/metrasight (ephemeral, Render Free default,
+# re-seeded each cold start) or a mounted persistent disk on paid plans.
 # ---------------------------------------------------------------------------
 FROM node:20-bookworm-slim AS web-build
 

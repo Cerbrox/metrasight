@@ -294,10 +294,12 @@ the backup/failure plans: [`docs/judge-demo.md`](docs/judge-demo.md).
 ## Deployment (public HTTPS URL)
 
 The prototype deploys to Render as **one Docker web service** serving the
-built SPA + FastAPI API on a single origin, with SQLite, uploaded evidence
-and the PaddleOCR model cache on a persistent disk. Everything is
-environment-driven — no code or credentials are baked in. Full instructions:
-**[docs/deployment.md](docs/deployment.md)**.
+built SPA + FastAPI API on a single origin. The default `render.yaml` targets
+**Render Free ($0)** — SQLite, uploaded evidence and the PaddleOCR model
+cache live on the ephemeral filesystem and are re-seeded (via REAL OCR) on
+every cold start; see the limitations in
+**[docs/deployment.md](docs/deployment.md)** before sharing the URL. A paid
+persistent-disk variant is documented there as the production path.
 
 ---
 

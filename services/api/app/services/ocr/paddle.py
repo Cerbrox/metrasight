@@ -67,6 +67,8 @@ class PaddleOCRService(OCRService):
         use_doc_unwarping: bool = False,
         use_textline_orientation: bool = False,
         model_tier: str = "mobile",
+        cpu_threads: int | None = None,
+        enable_mkldnn: bool | None = None,
     ) -> None:
         self._langs = [lang.strip() for lang in (langs or ["en"]) if lang.strip()]
         unsupported = [lang for lang in self._langs if lang not in SUPPORTED_LANGS]
@@ -107,6 +109,13 @@ class PaddleOCRService(OCRService):
             )
         self._engines: dict[str, object] = {}
         self._engine_lock = threading.Lock()
+        # Deployment tuning (RAM-constrained hosts): forwarded to PaddleOCR
+        # engine construction ONLY when explicitly set — None keeps the
+        # library defaults, so local behaviour is unchanged.
+        if cpu_threads is not None:
+            self._engine_flags["cpu_threads"] = cpu_threads
+        if enable_mkldnn is not None:
+            self._engine_flags["enable_mkldnn"] = enable_mkldnn
         # Single worker keeps inference serialized (paddle inference is not
         # thread-safe) while still giving us a hard timeout handle.
         self._executor = ThreadPoolExecutor(max_workers=1, thread_name_prefix="paddle-ocr")

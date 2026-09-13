@@ -82,6 +82,13 @@ class Settings(BaseSettings):
     # request never pays engine-init latency. Costs ~10s of boot time when the
     # perception backend is "paddle"; no effect otherwise.
     perception_ocr_prewarm: bool = True
+    # --- OCR engine memory/CPU tuning (deployment; None = library default) --
+    # Passed straight to PaddleOCR engine construction only when set. Used on
+    # RAM-constrained hosts (e.g. Render Free, 512 MB): cpu_threads=1 and
+    # enable_mkldnn=false measurably reduce peak inference memory at some CPU
+    # speed cost. Unset locally — behaviour is bit-identical to before.
+    perception_ocr_cpu_threads: int | None = None
+    perception_ocr_enable_mkldnn: bool | None = None
 
     # --- Demo seeding (DEMO ONLY) -----------------------------------------
     seed_demo_data: bool = True
